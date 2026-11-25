@@ -1,4 +1,4 @@
-import type { AdjustmentResult, Movement, Product, ProductInput, ProductList, ProductQuery, ProductSummary, StockAdjustment } from './types'
+import type { AdjustmentResult, Movement, Order, OrderInput, Product, ProductInput, ProductList, ProductQuery, ProductSummary, StockAdjustment } from './types'
 
 export class ApiError extends Error {
   readonly status: number
@@ -52,11 +52,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 }
 
-const jsonBody = (method: string, input: ProductInput | StockAdjustment): RequestInit => ({
+const jsonBody = (method: string, input: ProductInput | StockAdjustment | OrderInput): RequestInit => ({
   method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
 })
 
 export const api = {
+  createOrder: (input: OrderInput) => request<Order>('/orders', jsonBody('POST', input)),
+  order: (id: number, signal?: AbortSignal) => request<Order>(`/orders/${id}`, { signal }),
+  cancelOrder: (id: number) => request<Order>(`/orders/${id}/cancel`, { method: 'POST' }),
   products: (query: ProductQuery, signal?: AbortSignal) =>
     request<ProductList>(`/products?${productQueryString(query)}`, { signal }),
   summary: (signal?: AbortSignal) => request<ProductSummary>('/products/summary', { signal }),

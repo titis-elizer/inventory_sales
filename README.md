@@ -125,6 +125,16 @@ Setelah sukses modal ditutup/reset, produk dan summary dimuat ulang, serta panel
 
 Tes unit standar mencakup validasi qty/note, error stok tersedia, kegagalan backend, submission gate, dan kontrak stock/history client. Tes integrasi frontend opt-in (`src/stock.integration.test.ts`) memakai backend asli melalui `STOCKFLOW_TEST_API` (contoh `http://127.0.0.1:5174` untuk proxy development). Tes membuat produk khusus verifikasi dengan saldo akhir nol dan menyimpan audit history; tidak menyentuh stok produk bisnis. Jalankan hanya pada database development/test yang sesuai. Mode `STOCKFLOW_TEST_OFFLINE=1` memverifikasi error dengan backend pengujian sudah dihentikan.
 
+## Sales order interface (stage 7)
+
+The interface is in English, including validation, errors, accessibility labels and timestamps; currency remains IDR. **Create order** opens a customer/items form. Product options come from searchable, paginated `/api/products` results (all statuses, matching backend rules), not mock data or an assumed first page. Selected SKUs remain selected when browsing other option pages. The server revalidates current stock and prices.
+
+Client validation requires a customer, at least one item, valid SKUs, positive int32 quantities and unique case-sensitive SKUs after trimming. Synchronous submission locking prevents duplicate create/cancel requests, with controls disabled while processing. Backend 400 messages remain visible; SKU-specific errors highlight the matching item and show available quantity including zero. Failed creates retain form inputs. No final total is calculated by the client.
+
+Successful creation opens detail from the server response, displaying customer, item quantities, server unit-price snapshots, server total, status, created time and cancellation time. **Refresh detail** reads `GET /api/orders/{id}`. **Cancel order** requires confirmation and updates detail from the cancel response; product stock, global summary and open movement history are refreshed. Returning to products refreshes again so restored stock is visible. No order-list API is added. Leaving the order screen discards its local form/detail; this stage has no order history list or persistent navigation.
+
+An interrupted create response has an ambiguous outcome because the backend has no idempotency key. Do not blindly resubmit; if an ID is known, refresh its detail. Unit tests cover pure order validation, payload normalization, SKU/available errors and the existing API endpoint contracts. Run `npm test`, `npm run typecheck`, and `npm run build` from `D:\project\Inventory_And_Sales\frontend`.
+
 ## Sales orders (tahap 4)
 
 | Method | Path | Respons sukses |

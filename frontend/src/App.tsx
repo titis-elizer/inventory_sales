@@ -5,12 +5,14 @@ import { changeCriteria, formatIDR, LatestRequest, pageCount, relativeMovement }
 import ProductForm from './ProductForm'
 import StockAdjustmentModal from './StockAdjustmentModal'
 import MovementHistory from './MovementHistory'
+import OrderFlow from './OrderFlow'
 import './style.css'
 
 const errorMessage = (error: unknown) => error instanceof ApiError
   ? `${error.message} (${error.code})` : 'Something went wrong. Please try again.'
 
 export default function App() {
+  const [view, setView] = useState<'products' | 'order'>('products')
   const [query, setQuery] = useState<ProductQuery>({ search: '', filter: 'all', page: 1, limit: 10 })
   const [search, setSearch] = useState('')
   const [list, setList] = useState<ProductList | null>(null)
@@ -123,8 +125,11 @@ export default function App() {
   const pendingSearch = search.trim() !== query.search
   const tableLoading = loading || pendingSearch
   return <main className="container">
+    {view === 'order' && <OrderFlow onBack={() => { refresh(); setView('products') }} onMutation={refresh} />}
+    <div hidden={view !== 'products'}>
     <header><div><p className="eyebrow">STOCKFLOW</p><h1>Products & inventory</h1><p>Manage your product catalog and monitor warehouse stock.</p></div>
-      <button disabled={busy} onClick={() => { setFormError(''); setEditor({ product: null }) }}>+ Add product</button></header>
+      <div className="actions"><button className="secondary" disabled={busy} onClick={() => setView('order')}>+ Create order</button>
+        <button disabled={busy} onClick={() => { setFormError(''); setEditor({ product: null }) }}>+ Add product</button></div></header>
     {notice && <div className="notice" role="status">{notice}</div>}
     {mutationError && <div className="alert" role="alert">{mutationError} <button className="secondary" onClick={() => setMutationError('')}>Dismiss</button></div>}
     <section aria-label="Global summary" aria-busy={summaryLoading}>
@@ -176,5 +181,6 @@ export default function App() {
       setNotice('Stock adjustment saved successfully.')
       refresh()
     }} />}
+    </div>
   </main>
 }

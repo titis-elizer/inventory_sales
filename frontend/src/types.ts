@@ -53,3 +53,24 @@ export interface AdjustmentResult {
   product: Product
   movement: Movement
 }
+
+export interface OrderInput {
+  customer: string
+  items: { sku: string; qty: number }[]
+}
+export interface OrderItem {
+  id: number
+  order_id: number
+  sku: string
+  qty: number
+  unit_price: number
+}
+export interface Order {
+  id: number
+  customer: string
+  status: string
+  total: number
+  created_at: string
+  cancelled_at: string | null
+  items: OrderItem[]
+}

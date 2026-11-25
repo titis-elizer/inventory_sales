@@ -4,6 +4,19 @@ import { api, ApiError, parseApiError, productQueryString } from './api'
 afterEach(() => vi.unstubAllGlobals())
 
 describe('API client', () => {
+  it('creates, reads and cancels orders through the existing endpoints only', async () => {
+    const order = { id: 12, total: 9876, items: [{ sku: 'COF', unit_price: 4938, qty: 2 }], status: 'CONFIRMED' }
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(order))))
+    vi.stubGlobal('fetch', fetchMock)
+    const input = { customer: 'Customer', items: [{ sku: 'COF', qty: 2 }] }
+    await expect(api.createOrder(input)).resolves.toEqual(order)
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) })
+    const signal = new AbortController().signal
+    await expect(api.order(12, signal)).resolves.toEqual(order)
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/orders/12', { signal })
+    await expect(api.cancelOrder(12)).resolves.toEqual(order)
+    expect(fetchMock).toHaveBeenLastCalledWith('/api/orders/12/cancel', { method: 'POST' })
+  })
   it('posts stock direction, qty, and note to the centralized stock endpoint', async () => {
     const result = { product: { id: 3, stock: 4 }, movement: { id: 8, type: 'in', qty: 4 } }
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(result)))

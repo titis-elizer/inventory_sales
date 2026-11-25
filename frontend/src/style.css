@@ -19,6 +19,14 @@ input, select, textarea { width: 100%; min-width: 0; border: 1px solid #a8bdbf; 
 textarea { resize: vertical; }
 .history { margin-top: 24px; }
 .movement-note { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 180px; }
+.order-fields { border: 0; padding: 0; margin: 0; display: grid; gap: 10px; min-width: 0; }
+.order-item { display: grid; gap: 8px; border: 1px solid #d7e3e3; border-radius: 8px; padding: 16px; }
+.order-item button, .order-fields > button { justify-self: start; }
+.conflict-row { background: #fff0f0; outline: 2px solid #a32121; outline-offset: -2px; }
+.order-metadata { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; }
+.order-metadata dt { font-weight: 600; color: #52696c; }
+.order-metadata dd { margin: 8px 0; overflow-wrap: anywhere; }
+.order-total { font-size: 1.2rem; }
 button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #3dafa3; outline-offset: 3px; }
 label { font-size: .9rem; font-weight: 600; }
 .stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 24px; }
