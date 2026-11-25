@@ -49,7 +49,7 @@ Compose menjalankan PostgreSQL dengan healthcheck, lalu service `setup` menjalan
 - Migration versi 1 dan seed dijalankan dalam satu transaksi. Advisory transaction lock menserialisasi setup paralel; kegagalan menyebabkan rollback.
 - Versi yang sudah tercatat tidak dijalankan ulang. Jangan mengedit migration yang sudah diterapkan; tambahkan file dan blok versi baru pada runner untuk tahap berikutnya.
 - Seed menyediakan 12 produk realistis, SKU unik, harga integer, dan stok awal. `ON CONFLICT (sku) DO NOTHING` tidak menggandakan produk atau menimpa harga/stok yang telah berubah. Sequence ID bisa memiliki celah setelah pengulangan, dan ID tidak boleh diasumsikan berurutan.
-- Tahap 1 belum mengisi sample order atau movement; sample order dari requirement keseluruhan dapat ditambahkan bersama tahap transaksi berikutnya.
+- Seed sample order tersedia sejak tahap 4: satu aktif dan satu cancelled, beserta movement out/in. Tabel metadata `seed_runs` mencegah replay; pada database baru stok kopi menjadi 38 dan teh hijau 23 setelah sample order. Order cancelled memiliki dampak stok bersih nol.
 
 Ulangi setup tanpa menghapus data:
 
@@ -98,6 +98,39 @@ README.md
 ```
 
 Untuk berhenti gunakan `docker compose down` dari root; named volume tetap menyimpan data. `docker compose down -v` menghapus seluruh data proyek dan hanya boleh digunakan jika data development memang boleh dibuang.
+
+## Sales orders (tahap 4)
+
+| Method | Path | Respons sukses |
+|---|---|---|
+| POST | `/api/orders` | 201 order lengkap dan header Location |
+| GET | `/api/orders/{id}` | 200 order lengkap |
+| POST | `/api/orders/{id}/cancel` | 200 order dengan status CANCELLED |
+
+Create hanya menerima `customer` dan `items` berisi `sku`/`qty`:
+
+```json
+{"customer":"Kedai Pagi","items":[{"sku":"KOP-AR250","qty":2},{"sku":"TEH-HJ100","qty":1}]}
+```
+
+Customer/SKU di-trim. Customer kosong, items kosong, SKU kosong/duplikat/tidak dikenal, qty bukan integer positif ditolak 400. Duplicate diperiksa setelah trim, case-sensitive sesuai SKU database. `unit_price`, `total`, `status`, maupun field asing dari client ditolak. Produk inactive masih boleh dipesan karena kontrak belum melarangnya.
+
+Response order berbentuk `{id,customer,status,total,created_at,cancelled_at,items:[{id,order_id,sku,qty,unit_price}]}`; timestamp UTC. Harga item diambil dari produk yang terkunci dan disimpan sebagai snapshot; perubahan harga produk setelah create tidak mengubah order historis. Total dihitung dengan intermediate int64 dan dibatasi 2147483647 IDR agar sesuai kolom INTEGER. Pelampauan total: 400 `ORDER_TOTAL_OVERFLOW`.
+
+Create mengambil seluruh row lock produk dengan `ORDER BY id FOR UPDATE`, bukan mengikuti urutan input. Semua SKU, total, dan ketersediaan stok diperiksa sebelum penulisan pertama. Order/items/decrement stok/movement out ditulis dalam satu transaksi; kegagalan apa pun me-rollback semuanya. Stok kurang: 409 `{"error":{"code":"INSUFFICIENT_STOCK","message":"Insufficient stock for SKU: ...","sku":"...","available":0}}`. SKU tidak dikenal: 400 `UNKNOWN_SKU`.
+
+Cancel mengambil lock order dan mengecek status di transaksi, lalu mengunci semua produk dalam urutan ID yang sama. Restore stok, movement in, status CANCELLED, dan cancelled_at disimpan atomik. Cancel kedua (termasuk concurrent) mendapat 409 `ORDER_ALREADY_CANCELLED`, tanpa restore tambahan. Jika restore melewati batas INTEGER: 409 `STOCK_LIMIT_EXCEEDED` dan tidak ada perubahan. Order tidak ditemukan: 404 `ORDER_NOT_FOUND`. Movement memakai note `Sales order #ID: in/out`; history tidak dihapus. Detail dibaca dalam snapshot repeatable-read.
+
+Seed `003_orders.sql` dijalankan oleh setup dalam transaksi dan advisory lock yang sama. Marker `seed_runs.sample_orders_v1` baru disimpan setelah seluruh order/stok/movement sukses. Pengulangan tidak membuat order atau mengurangi stok lagi; jika stok development sudah tidak cukup, setup gagal dan rollback tanpa mereset stok. Seed bukan untuk database produksi.
+
+```powershell
+$body = @{ customer = 'Kedai Pagi'; items = @(@{ sku = 'KOP-AR250'; qty = 2 }) } | ConvertTo-Json -Depth 4
+$order = Invoke-RestMethod http://localhost:8080/api/orders -Method Post -ContentType application/json -Body $body
+Invoke-RestMethod "http://localhost:8080/api/orders/$($order.id)"
+Invoke-RestMethod "http://localhost:8080/api/orders/$($order.id)/cancel" -Method Post
+```
+
+Integration test order memakai `TEST_DATABASE_URL` khusus test dan schema sementara. Pool menyediakan hingga 16 koneksi; test memastikan beberapa PostgreSQL session berbeda. Cakupan meliputi multi-item, snapshot harga, validasi sebelum write, overflow, stok kurang tanpa perubahan, rollback kegagalan movement, cancel concurrent tepat sekali, dan 16 create concurrent dengan urutan SKU berlawanan. Jalankan seluruh pemeriksaan backend seperti petunjuk test di bawah. Request timeout/retry client belum memiliki Idempotency-Key; jangan melakukan retry create secara buta.
 
 ## Stock adjustment dan history (tahap 3)
 

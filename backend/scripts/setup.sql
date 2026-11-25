@@ -14,4 +14,5 @@ INSERT INTO schema_migrations (version) VALUES (1);
 \endif
 
 \ir ../seeds/002_demo.sql
+\ir ../seeds/003_orders.sql
 COMMIT;

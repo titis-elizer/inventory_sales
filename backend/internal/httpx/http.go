@@ -14,6 +14,7 @@ type Error struct {
 	Code      string `json:"code"`
 	Message   string `json:"message"`
 	Available *int32 `json:"available,omitempty"`
+	SKU       string `json:"sku,omitempty"`
 }
 
 func JSON(w http.ResponseWriter, status int, body any) {

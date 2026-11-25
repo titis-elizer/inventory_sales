@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"inventory-and-sales/backend/internal/config"
 	"inventory-and-sales/backend/internal/httpx"
+	"inventory-and-sales/backend/internal/orders"
 	"inventory-and-sales/backend/internal/products"
 )
 
@@ -42,6 +43,7 @@ func run() error {
 	}
 	mux := http.NewServeMux()
 	products.Register(mux, db)
+	orders.Register(mux, db)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
