@@ -11,8 +11,9 @@ import (
 )
 
 type Error struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code      string `json:"code"`
+	Message   string `json:"message"`
+	Available *int32 `json:"available,omitempty"`
 }
 
 func JSON(w http.ResponseWriter, status int, body any) {
@@ -26,7 +27,15 @@ func JSON(w http.ResponseWriter, status int, body any) {
 func Fail(w http.ResponseWriter, status int, code, message string) {
 	JSON(w, status, struct {
 		Error Error `json:"error"`
-	}{Error{code, message}})
+	}{Error{Code: code, Message: message}})
+}
+
+func InsufficientStock(w http.ResponseWriter, available int32) {
+	JSON(w, http.StatusConflict, struct {
+		Error Error `json:"error"`
+	}{
+		Error{Code: "INSUFFICIENT_STOCK", Message: "Insufficient stock", Available: &available},
+	})
 }
 
 func Internal(w http.ResponseWriter, err error) {

@@ -99,6 +99,30 @@ README.md
 
 Untuk berhenti gunakan `docker compose down` dari root; named volume tetap menyimpan data. `docker compose down -v` menghapus seluruh data proyek dan hanya boleh digunakan jika data development memang boleh dibuang.
 
+## Stock adjustment dan history (tahap 3)
+
+- `POST /api/products/{id}/stock`: body `{"type":"in","qty":10,"note":"Penerimaan barang"}`. Sukses 200 `{product,movement}`; type hanya `in`/`out`, qty integer positif maksimal 2147483647. Note opsional, default string kosong. Null, field asing, dan tipe salah ditolak sesuai decoder JSON terpusat.
+- `GET /api/products/{id}/movements`: 200 `{data:[...]}`, terbaru dahulu berdasarkan `created_at DESC, id DESC`; tanpa history mengembalikan array kosong. Timestamp UTC ISO 8601; note dapat null untuk data lama. History saat ini belum dipaginasi.
+- Produk tidak ditemukan: 404 `PRODUCT_NOT_FOUND`; validasi salah: 400. Stock out berlebih: 409 `{"error":{"code":"INSUFFICIENT_STOCK","message":"Insufficient stock","available":0}}` (available tetap ada ketika nol). Stock in yang melewati batas INTEGER: 409 `STOCK_LIMIT_EXCEEDED`.
+- Adjustment mengambil `SELECT ... FOR UPDATE` pada produk sebelum membaca stok. Update stok dan insert movement berada dalam satu transaksi; kegagalan insert/commit tidak menghasilkan perubahan parsial. Row lock menserialisasi adjustment concurrent serta berkoordinasi dengan update/delete produk. Tidak ada perubahan stok berdasarkan pembacaan tanpa proteksi.
+- Movement memakai `clock_timestamp()` saat insert agar timestamp mencerminkan waktu penulisan setelah menunggu lock. History menggunakan snapshot repeatable-read; tidak ada endpoint menghapus history.
+
+Integration test memakai PostgreSQL asli, mencakup stock in/out, penolakan input, rollback ketika stok kurang, rollback jika insert movement gagal, history, batas integer, dan 16 request stock out bersamaan (stok 5: tepat 5 sukses, sisanya 409 available 0).
+
+Jalankan tes hanya pada database test khusus, bukan produksi. Contoh PowerShell dari root, setelah environment PostgreSQL diekspor sesuai `.env` lokal:
+
+```powershell
+docker compose exec -T postgres createdb -U $env:POSTGRES_USER stockflow_test
+# Ganti user/password/port agar sesuai konfigurasi lokal.
+$env:TEST_DATABASE_URL = 'postgres://stockflow:stockflow_local_only@localhost:5432/stockflow_test?sslmode=disable'
+Set-Location D:\project\Inventory_And_Sales\backend
+go test -count=1 -v ./...
+go vet ./...
+go build -o bin/api.exe ./cmd/api
+```
+
+Setiap integration test membuat schema terisolasi di database test dan membersihkannya setelah selesai. Tanpa `TEST_DATABASE_URL`, integration test di-skip. Database sementara khusus dipakai saat verifikasi tahap 3; database development/produksi tidak digunakan untuk fixture test.
+
 ## API produk (tahap 2)
 
 | Method | Path | Respons sukses |

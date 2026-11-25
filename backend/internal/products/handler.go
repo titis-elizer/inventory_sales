@@ -11,6 +11,7 @@ import (
 
 func Register(mux *http.ServeMux, db *pgxpool.Pool) {
 	s := store{db}
+	registerStock(mux, s)
 	mux.HandleFunc("GET /api/products", func(w http.ResponseWriter, r *http.Request) {
 		q, err := parseQuery(r.URL.Query())
 		if err != nil {
