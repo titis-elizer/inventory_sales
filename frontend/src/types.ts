@@ -35,3 +35,21 @@ export interface ProductSummary {
   total_stock_value: number
   low_stock_count: number
 }
+
+export interface StockAdjustment {
+  type: 'in' | 'out'
+  qty: number
+  note: string
+}
+export interface Movement {
+  id: number
+  product_id: number
+  type: 'in' | 'out'
+  qty: number
+  note: string | null
+  created_at: string
+}
+export interface AdjustmentResult {
+  product: Product
+  movement: Movement
+}

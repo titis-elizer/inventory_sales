@@ -117,6 +117,14 @@ npm run build
 
 Vitest menguji validasi harga/nama/SKU, normalisasi payload, reset pagination, request version gate, waktu relatif, format IDR, query encoding, typed error, network/abort handling, dan respons 204. Production build menghasilkan static bundle; deployment production perlu reverse proxy `/api` ke Go (proxy Vite hanya development). Belum ada browser E2E otomatis.
 
+## Stock adjustment & movement history (tahap 6)
+
+Action **Adjustment** membuka modal direction in/out, qty integer positif (1–2147483647), dan note opsional. Submit memakai synchronous gate untuk menolak submit ganda dan controls disabled selama saving. Error mempertahankan input; `409 INSUFFICIENT_STOCK` menampilkan quantity tersedia termasuk nol. Pada gangguan koneksi/server, periksa history sebelum mengulang karena request yang kehilangan respons mungkin sudah diproses server.
+
+Setelah sukses modal ditutup/reset, produk dan summary dimuat ulang, serta panel history produk terkait dibuka/disegarkan. **History** juga dapat dibuka tanpa adjustment; datanya dari API, terbaru dahulu (created_at DESC, id DESC), dengan loading, empty, error/retry, dan refresh manual. Timestamp last movement dibaca ulang dari backend, bukan dibuat secara optimistis di frontend.
+
+Tes unit standar mencakup validasi qty/note, error stok tersedia, kegagalan backend, submission gate, dan kontrak stock/history client. Tes integrasi frontend opt-in (`src/stock.integration.test.ts`) memakai backend asli melalui `STOCKFLOW_TEST_API` (contoh `http://127.0.0.1:5174` untuk proxy development). Tes membuat produk khusus verifikasi dengan saldo akhir nol dan menyimpan audit history; tidak menyentuh stok produk bisnis. Jalankan hanya pada database development/test yang sesuai. Mode `STOCKFLOW_TEST_OFFLINE=1` memverifikasi error dengan backend pengujian sudah dihentikan.
+
 ## Sales orders (tahap 4)
 
 | Method | Path | Respons sukses |

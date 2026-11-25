@@ -1,4 +1,4 @@
-import type { Product, ProductInput, ProductList, ProductQuery, ProductSummary } from './types'
+import type { AdjustmentResult, Movement, Product, ProductInput, ProductList, ProductQuery, ProductSummary, StockAdjustment } from './types'
 
 export class ApiError extends Error {
   readonly status: number
@@ -52,7 +52,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
 }
 
-const jsonBody = (method: string, input: ProductInput): RequestInit => ({
+const jsonBody = (method: string, input: ProductInput | StockAdjustment): RequestInit => ({
   method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input),
 })
 
@@ -63,4 +63,6 @@ export const api = {
   createProduct: (input: ProductInput) => request<Product>('/products', jsonBody('POST', input)),
   updateProduct: (id: number, input: ProductInput) => request<Product>(`/products/${id}`, jsonBody('PUT', input)),
   deleteProduct: (id: number) => request<void>(`/products/${id}`, { method: 'DELETE' }),
+  adjustStock: (id: number, input: StockAdjustment) => request<AdjustmentResult>(`/products/${id}/stock`, jsonBody('POST', input)),
+  movements: (id: number, signal?: AbortSignal) => request<{ data: Movement[] }>(`/products/${id}/movements`, { signal }),
 }

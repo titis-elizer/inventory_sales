@@ -4,6 +4,23 @@ import { api, ApiError, parseApiError, productQueryString } from './api'
 afterEach(() => vi.unstubAllGlobals())
 
 describe('API client', () => {
+  it('posts stock direction, qty, and note to the centralized stock endpoint', async () => {
+    const result = { product: { id: 3, stock: 4 }, movement: { id: 8, type: 'in', qty: 4 } }
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(result)))
+    vi.stubGlobal('fetch', fetchMock)
+    await expect(api.adjustStock(3, { type: 'in', qty: 4, note: 'Receipt' })).resolves.toEqual(result)
+    expect(fetchMock).toHaveBeenCalledWith('/api/products/3/stock', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: 'in', qty: 4, note: 'Receipt' }),
+    })
+  })
+  it('loads movements with abort support and preserves newest-first API ordering', async () => {
+    const data = [{ id: 8 }, { id: 7 }]
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ data })))
+    vi.stubGlobal('fetch', fetchMock)
+    const signal = new AbortController().signal
+    await expect(api.movements(3, signal)).resolves.toEqual({ data })
+    expect(fetchMock).toHaveBeenCalledWith('/api/products/3/movements', { signal })
+  })
   it('preserves code, message, sku, and available including zero', () => {
     const error = parseApiError(409, { error: { code: 'INSUFFICIENT_STOCK', message: 'Stok kurang', sku: 'COF', available: 0 } })
     expect(error).toBeInstanceOf(ApiError)

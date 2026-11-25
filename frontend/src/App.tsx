@@ -3,6 +3,8 @@ import { api, ApiError } from './api'
 import type { Product, ProductInput, ProductList, ProductQuery, ProductSummary } from './types'
 import { changeCriteria, formatIDR, LatestRequest, pageCount, relativeMovement } from './productLogic'
 import ProductForm from './ProductForm'
+import StockAdjustmentModal from './StockAdjustmentModal'
+import MovementHistory from './MovementHistory'
 import './style.css'
 
 const errorMessage = (error: unknown) => error instanceof ApiError
@@ -19,6 +21,8 @@ export default function App() {
   const [summaryLoading, setSummaryLoading] = useState(true)
   const [revision, setRevision] = useState(0)
   const [editor, setEditor] = useState<{ product: Product | null } | null>(null)
+  const [adjustment, setAdjustment] = useState<Product | null>(null)
+  const [history, setHistory] = useState<Product | null>(null)
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [mutationError, setMutationError] = useState('')
@@ -154,6 +158,8 @@ export default function App() {
               <td><span className={product.is_active ? 'badge' : 'badge inactive'}>{product.is_active ? 'Aktif' : 'Nonaktif'}</span></td>
               <td><span title={product.last_movement_at ? new Date(product.last_movement_at).toLocaleString('id-ID') : undefined}>{relativeMovement(product.last_movement_at, now)}</span></td>
               <td><div className="actions"><button className="secondary" disabled={busy} aria-label={`Edit ${product.sku}`} onClick={() => { setFormError(''); setEditor({ product }) }}>Edit</button>
+                <button className="secondary" disabled={busy} aria-label={`Adjustment ${product.sku}`} onClick={() => setAdjustment(product)}>Adjustment</button>
+                <button className="secondary" disabled={busy} aria-label={`History ${product.sku}`} onClick={() => setHistory(product)}>History</button>
                 <button className="danger" disabled={busy} aria-label={`Hapus ${product.sku}`} onClick={() => void remove(product)}>{deleting === product.id ? 'Menghapus…' : 'Hapus'}</button></div></td>
             </tr>)}</tbody></table></div>}
       </div>
@@ -163,5 +169,12 @@ export default function App() {
       </div></nav>
     </section>
     {editor && <ProductForm product={editor.product} saving={saving} error={formError} onClose={() => setEditor(null)} onSave={save} />}
+    {history && <MovementHistory key={history.id} product={history} revision={revision} onClose={() => setHistory(null)} />}
+    {adjustment && <StockAdjustmentModal key={adjustment.id} product={adjustment} onClose={() => setAdjustment(null)} onSuccess={result => {
+      setAdjustment(null)
+      setHistory(result.product)
+      setNotice('Adjustment stok berhasil disimpan.')
+      refresh()
+    }} />}
   </main>
 }
