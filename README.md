@@ -99,6 +99,24 @@ README.md
 
 Untuk berhenti gunakan `docker compose down` dari root; named volume tetap menyimpan data. `docker compose down -v` menghapus seluruh data proyek dan hanya boleh digunakan jika data development memang boleh dibuang.
 
+## Halaman produk (tahap 5)
+
+Frontend menggunakan backend asli melalui Vite proxy. `src/types.ts` menyimpan shared domain types; `src/api.ts` adalah satu-satunya pemilik fetch, URL, query serialization, dan parsing error. `ApiError` mempertahankan status, code, message, sku, serta available termasuk nilai 0. Tidak ada mock data pada halaman; mock fetch hanya dipakai unit test.
+
+Halaman menyediakan tabel produk, form tambah/edit, delete dengan konfirmasi browser, search debounce 350 ms, filter All/Active/Inactive/Low stock, pagination, dan summary global. Search/filter/ukuran halaman mengembalikan page ke 1. AbortController dan version gate menolak response lama, termasuk saat kriteria berubah sebelum debounce selesai. Mutation sukses memuat ulang tabel serta summary; halaman dikoreksi jika penghapusan membuat page saat ini kosong. Harga IDR, badge status, stok rendah, dan movement relatif ditampilkan; timestamp lengkap tersedia pada tooltip.
+
+Loading ditampilkan selama request; empty dapat dicapai dengan search yang tidak cocok; error/retry dapat dicapai dengan menghentikan backend lalu Refresh. Error mutation ditampilkan tanpa menutup form. Table dapat di-scroll horizontal di layar kecil; form memakai modal native dengan keyboard/focus behavior browser. Summary global tidak dihitung dari halaman/filter lokal.
+
+```powershell
+Set-Location D:\project\Inventory_And_Sales\frontend
+npm ci
+npm run typecheck
+npm test
+npm run build
+```
+
+Vitest menguji validasi harga/nama/SKU, normalisasi payload, reset pagination, request version gate, waktu relatif, format IDR, query encoding, typed error, network/abort handling, dan respons 204. Production build menghasilkan static bundle; deployment production perlu reverse proxy `/api` ke Go (proxy Vite hanya development). Belum ada browser E2E otomatis.
+
 ## Sales orders (tahap 4)
 
 | Method | Path | Respons sukses |
