@@ -198,11 +198,12 @@ func TestOrderAPI(t *testing.T) {
 	call("GET", "/api/orders/2147483647", "", 404)
 	call("POST", "/api/orders/2147483647/cancel", "", 404)
 	// Force a late movement failure to prove order, items, and stock roll back.
-	if _, err := db.Exec(ctx, `ALTER TABLE stock_movements ADD CONSTRAINT reject_order_out CHECK(type <> 'out') NOT VALID`); err != nil {
+	if _, err := db.Exec(ctx, `ALTER TABLE stock_movements ADD CONSTRAINT reject_order_out CHECK(type <> 'out' OR product_id <> (2)) NOT VALID`); err != nil {
 		t.Fatal(err)
 	}
 	before := state()
-	call("POST", "/api/orders", `{"customer":"C","items":[{"sku":"A","qty":1}]}`, 500)
+	// A's item, stock update, and movement succeed before B's movement fails.
+	call("POST", "/api/orders", `{"customer":"C","items":[{"sku":"A","qty":1},{"sku":"B","qty":1}]}`, 500)
 	if state() != before {
 		t.Fatal("late failure not atomic")
 	}

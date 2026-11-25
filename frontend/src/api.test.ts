@@ -5,7 +5,7 @@ afterEach(() => vi.unstubAllGlobals())
 
 describe('API client', () => {
   it('creates, reads and cancels orders through the existing endpoints only', async () => {
-    const order = { id: 12, total: 9876, items: [{ sku: 'COF', unit_price: 4938, qty: 2 }], status: 'CONFIRMED' }
+    const order = { id: 12, total: 9876, items: [{ sku: 'COF', unit_price: 4938, qty: 2 }], status: 'CREATED' }
     const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify(order))))
     vi.stubGlobal('fetch', fetchMock)
     const input = { customer: 'Customer', items: [{ sku: 'COF', qty: 2 }] }

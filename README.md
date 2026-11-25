@@ -1,255 +1,216 @@
 # StockFlow — Inventory & Sales
 
-Fondasi proyek dan API produk. Frontend React + TypeScript/Vite; backend Go `net/http` + `pgx`; PostgreSQL 17. Folder repository saat ini bernama `Inventory_And_Sales`, dengan layout backend/frontend sesuai requirement.
+React 19 + strict TypeScript/Vite, Go `net/http`/`pgx`, PostgreSQL 17. All application flows use the real API; response mocks exist only in unit tests. The repository is named `Inventory_And_Sales` and contains the required backend/frontend/Compose layout.
 
-## Prasyarat
+## Reviewer quick start
 
-- Docker Desktop aktif dengan Linux containers dan Docker Compose.
-- Go 1.26+, Node.js 22.12+, npm, dan PowerShell untuk perintah berikut.
-- Port lokal 5432 (database), 8080 (backend), dan 5173 (frontend) tersedia.
-
-## Setup
+Prerequisites: Docker Desktop running Linux containers and Compose, Go **1.26+**, Node.js **22.12+**, npm. Free ports: **5432, 8080, 5173**. These PowerShell commands start at the repository root (`D:\project\Inventory_And_Sales` in the implementation environment). Ignored `.tools` files are not required.
 
 ```powershell
-Set-Location D:\project\Inventory_And_Sales
-# Hanya pada setup awal; jangan menimpa .env yang sudah dikonfigurasi.
-Copy-Item .env.example .env
+# Initial setup only; never overwrite a configured .env.
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 docker compose up -d
 docker compose wait setup
 docker compose logs setup
+# Migration/seed service must exit 0.
 ```
 
-`setup` harus selesai dengan exit code 0. `docker compose up -d` sendiri belum menjamin migration selesai; cek `wait` dan log sebelum menjalankan aplikasi. Kredensial contoh hanya untuk development. Jika database/user/password/port diubah, sesuaikan juga `DATABASE_URL`. Karakter khusus password di URL perlu URL-encoding. Jangan commit `.env`.
-
-Backend, terminal pertama:
+Terminal 1, root:
 
 ```powershell
-Set-Location D:\project\Inventory_And_Sales
 .\backend\run.ps1
 ```
 
-Script membaca `PORT` dan `DATABASE_URL` dari `.env` root. Alternatif lintas platform: ekspor kedua environment variable tersebut lalu jalankan `go run ./cmd/api` dari `backend/`. Backend memvalidasi konfigurasi, memeriksa koneksi DB saat startup, menyediakan shutdown terkontrol, dan berhenti jika koneksi awal gagal. `GET /api/health` memeriksa koneksi database.
-
-Frontend, terminal kedua:
+Terminal 2:
 
 ```powershell
-Set-Location D:\project\Inventory_And_Sales\frontend
+Set-Location frontend
 npm ci
 npm run dev
 ```
 
-Buka http://localhost:5173. React memakai `StrictMode`, TypeScript `strict: true`. Vite meneruskan `/api` ke `API_PROXY_TARGET` dari environment proses atau `.env` root (default http://localhost:8080). Tidak ada secret yang diekspos melalui variabel `VITE_*`. Halaman masih minimal dan tidak berisi mock business data.
+Open `http://localhost:5173`. The application commands are `backend/run.ps1` and `npm run dev` after dependency installation. On Linux/macOS export `DATABASE_URL` and `PORT`, then run `go run ./cmd/api` inside `backend/`. Vite proxies `/api` to Go; no development CORS setup is needed. Production needs static hosting of `frontend/dist` and an `/api` reverse proxy.
 
-## Migration dan seed
+Designed for <=5-minute setup with prerequisites installed and working downloads. `VERIFICATION.md` records actual measured timings/cache conditions; cold image/package downloads on another machine cannot be guaranteed under five minutes.
 
-Compose menjalankan PostgreSQL dengan healthcheck, lalu service `setup` menjalankan `backend/scripts/setup.sql` memakai `psql` dengan fail-fast. Tidak bergantung pada init script volume kosong.
+### Environment
 
-- Empat tabel domain: `products`, `stock_movements`, `sales_orders`, `sales_order_items`, dengan kolom dan relasi sesuai PDF; harga menggunakan PostgreSQL `INTEGER` dalam IDR.
-- `schema_migrations` adalah tabel metadata tambahan, bukan tabel domain.
-- Migration versi 1 dan seed dijalankan dalam satu transaksi. Advisory transaction lock menserialisasi setup paralel; kegagalan menyebabkan rollback.
-- Versi yang sudah tercatat tidak dijalankan ulang. Jangan mengedit migration yang sudah diterapkan; tambahkan file dan blok versi baru pada runner untuk tahap berikutnya.
-- Seed menyediakan 12 produk realistis, SKU unik, harga integer, dan stok awal. `ON CONFLICT (sku) DO NOTHING` tidak menggandakan produk atau menimpa harga/stok yang telah berubah. Sequence ID bisa memiliki celah setelah pengulangan, dan ID tidak boleh diasumsikan berurutan.
-- Seed sample order tersedia sejak tahap 4: satu aktif dan satu cancelled, beserta movement out/in. Tabel metadata `seed_runs` mencegah replay; pada database baru stok kopi menjadi 38 dan teh hijau 23 setelah sample order. Order cancelled memiliki dampak stok bersih nol.
+| Variable | Example/default | Purpose |
+|---|---|---|
+| POSTGRES_DB | stockflow | Compose database |
+| POSTGRES_USER | stockflow | Compose user |
+| POSTGRES_PASSWORD | stockflow_local_only | Required development-only password |
+| POSTGRES_PORT | 5432 | Loopback host DB port |
+| PORT | 8080 | API listen port |
+| DATABASE_URL | See `.env.example` | API PostgreSQL URL |
+| API_PROXY_TARGET | http://localhost:8080 | Vite proxy; process environment takes precedence |
+| TEST_DATABASE_URL | Dedicated test database URL | Enables backend integration tests |
 
-Ulangi setup tanpa menghapus data:
+`backend/run.ps1` reads PORT/DATABASE_URL from root `.env`; Vite reads root `.env` for its proxy. Keep URLs consistent with changed ports/credentials; URL-encode special password characters. Existing volumes retain their original database credentials. `.env` is ignored; no secrets use `VITE_*`.
+
+Stop with `docker compose stop` or `docker compose down` **without `-v`**. Do not remove existing data/volumes to fix setup problems.
+
+## Migration and seed
+
+Compose healthchecks PostgreSQL, then runs one-shot `setup` using `backend/scripts/setup.sql`, `psql -X -v ON_ERROR_STOP=1`. It does not depend on empty-volume entrypoint scripts.
+
+- One transaction and advisory transaction lock serialize setup. `schema_migrations` records versions; `001_init.sql` creates four domain tables, constraints and indexes.
+- `002_demo.sql`: 12 realistic products, unique SKUs, integer IDR prices, initial stock. ON CONFLICT DO NOTHING does not overwrite changed data.
+- `003_orders.sql`: one CREATED and one CANCELLED sample order with items/movements. `seed_runs` prevents replay. Fresh state: 12 products, 2 orders, 3 items, 4 movements, total stock 513.
+- Repeat setup is idempotent; failures roll back. Sequence gaps are normal. Never edit an applied migration; add a new version and runner block instead.
+- Reconcile/back up a pre-existing experimental schema without metadata; do not wipe it automatically. Seeds are for development, not production.
 
 ```powershell
-Set-Location D:\project\Inventory_And_Sales
 docker compose run --rm setup
 ```
 
-Jika volume lama memiliki schema dari eksperimen sebelumnya tetapi belum memiliki metadata migration, jangan menghapus data secara otomatis: backup dan rekonsiliasi schema terlebih dahulu. Perubahan kredensial `.env` juga tidak mengubah user/password pada volume PostgreSQL yang sudah ada.
+## Required interface workflows
 
-## Verifikasi
+- Products: SKU/name, IDR price, stock, status, relative last movement and timestamp tooltip; create/edit/delete, debounce 350 ms, All/Active/Inactive/Low stock filters, pagination and server-global summary.
+- Criteria reset page 1. Abort/version guards reject stale responses, including search reversion. Deletion corrects empty pages. Loading/empty/error/retry states are reachable.
+- Adjustment: in/out, positive integer qty, note, synchronous duplicate-submit lock, disabled saving controls. A 409 displays available quantity including zero; failed requests preserve input. Success resets/closes modal and refreshes product, summary and newest-first history.
+- Orders: customer, add/remove items, searchable/paginated real SKU options, positive int32 quantities, duplicate/empty validation. Backend 400 messages are visible. A 409 highlights the precise SKU and quantity available. Failed creation retains inputs.
+- Detail displays server item-price snapshots/total/status/times. Client never sends or calculates final total. Refresh uses detail API. Confirmed cancellation refreshes products, summary and open history; returning to products reloads restored stock.
+- English UI/accessibility/messages, English date/number locale, IDR currency. Database product names/notes are not translated.
+
+## API and curl examples
+
+Examples use **Bash-compatible quoting** (Windows: Git Bash/WSL; native PowerShell may use Invoke-RestMethod). Replace IDs with actual response IDs; sequences need not be contiguous. Run against development/test only.
+
+```bash
+BASE=http://localhost:8080
+curl -i "$BASE/api/health"
+curl -i "$BASE/api/products?search=kopi&page=1&limit=10"
+curl -i "$BASE/api/products?search=&page=1&limit=10&filter=low-stock"
+curl -i "$BASE/api/products/summary"
+
+curl -i -X POST "$BASE/api/products" -H 'Content-Type: application/json' \
+  -d '{"sku":"REVIEW-001","name":"Review coffee","price":25000,"is_active":true}'
+PRODUCT_ID=13 # REPLACE with response id
+curl -i -X PUT "$BASE/api/products/$PRODUCT_ID" -H 'Content-Type: application/json' \
+  -d '{"sku":"REVIEW-001","name":"Review coffee updated","price":26000,"is_active":true}'
+curl -i -X POST "$BASE/api/products/$PRODUCT_ID/stock" -H 'Content-Type: application/json' \
+  -d '{"type":"in","qty":5,"note":"Review receipt"}'
+curl -i -X POST "$BASE/api/products/$PRODUCT_ID/stock" -H 'Content-Type: application/json' \
+  -d '{"type":"out","qty":1,"note":"Review stock out"}'
+curl -i "$BASE/api/products/$PRODUCT_ID/movements"
+# Expected 409, including available quantity
+curl -i -X POST "$BASE/api/products/$PRODUCT_ID/stock" -H 'Content-Type: application/json' \
+  -d '{"type":"out","qty":99,"note":"Expected conflict"}'
+
+curl -i -X POST "$BASE/api/orders" -H 'Content-Type: application/json' \
+  -d '{"customer":"Review buyer","items":[{"sku":"REVIEW-001","qty":2}]}'
+ORDER_ID=3 # REPLACE with response id
+curl -i "$BASE/api/orders/$ORDER_ID"
+curl -i -X POST "$BASE/api/orders/$ORDER_ID/cancel"
+# Second cancel: 409 ORDER_ALREADY_CANCELLED
+curl -i -X POST "$BASE/api/orders/$ORDER_ID/cancel"
+
+curl -i -X POST "$BASE/api/products" -H 'Content-Type: application/json' \
+  -d '{"sku":"REVIEW-DELETE","name":"Disposable review product","price":0}'
+DELETE_ID=14 # REPLACE with response id
+curl -i -X DELETE "$BASE/api/products/$DELETE_ID" # 204
+curl -i -X DELETE "$BASE/api/products/$PRODUCT_ID" # 409 PRODUCT_HAS_HISTORY
+# Expected backend validation 400
+curl -i -X POST "$BASE/api/orders" -H 'Content-Type: application/json' \
+  -d '{"customer":"Review buyer","items":[]}'
+```
+
+| Endpoint | Success |
+|---|---|
+| GET /api/products | `{data,page,limit,total}` |
+| POST /api/products | 201 product + Location |
+| PUT /api/products/{id} | 200 product; missing 404 |
+| DELETE /api/products/{id} | 204; history 409 |
+| POST /api/products/{id}/stock | `{product,movement}` |
+| GET /api/products/{id}/movements | `{data:[...]}`, newest first |
+| POST /api/orders | 201 order/items/server prices/total + Location |
+| GET /api/orders/{id} | Order/items/status/total |
+| POST /api/orders/{id}/cancel | Updated CANCELLED order |
+
+Pagination defaults page 1/limit 20, max limit 100. Result pages beyond the end return empty data with correct total. Unknown/repeated/invalid query parameters return 400. Search is case-insensitive literal substring on SKU/name. Product writes accept only sku/name/price/is_active; stock cannot be edited. Price is integer 0–2147483647; SKU/name are trimmed. SKU uniqueness is case-sensitive. Missing is_active defaults true on create and is preserved on update.
+
+### API extensions
+
+No order-list/report endpoint was added. Extensions needed by the interface/safety:
+
+1. `filter=all|active|inactive|low-stock`; low stock <=10 includes inactive products.
+2. `/api/products/summary`: global total_products, active_products, total_stock_value, low_stock_count, unaffected by search/page/filter. Stock value includes inactive products.
+3. `/api/health`: DB-aware health, 200 status ok / 503 unavailable.
+4. SKU changes referenced by any order return SKU_IN_USE; delete of order-referenced products returns PRODUCT_IN_USE, preserving references.
+
+Errors: `{error:{code,message,sku?,available?}}`; available zero is preserved. Main codes: 400 INVALID_JSON/VALIDATION_ERROR/INVALID_QUERY/INVALID_ID/UNKNOWN_SKU/ORDER_TOTAL_OVERFLOW; 404 PRODUCT_NOT_FOUND/ORDER_NOT_FOUND; 409 SKU_EXISTS/SKU_IN_USE/PRODUCT_HAS_HISTORY/PRODUCT_IN_USE/INSUFFICIENT_STOCK/STOCK_LIMIT_EXCEEDED/ORDER_ALREADY_CANCELLED. Writes require application/json, <=1 MiB, one object and known fields. Wrong types/nulls are rejected; internal DB errors are logged, not leaked.
+
+## Transaction design
+
+- Adjustment locks product FOR UPDATE, checks stock, then updates stock and inserts movement in one transaction; failure/overflow/overdraw cannot partially commit.
+- Order create validates input, locks all products in ascending **product ID**, validates every SKU/quantity/price/total/availability before business writes. Prices are read under lock and snapshotted. Order/items/decrements/out movements commit together. Failure on item two rolls item one back.
+- Consistent lock ordering reduces deadlocks with opposite client item order. Row locks serialize overlapping orders/adjustments; CHECK/UNIQUE/FK constraints add protection. This is not an unprotected SELECT-then-UPDATE.
+- Cancel locks order first, checks status, then products in the same order. Stock restore/in movements/CANCELLED/cancelled_at commit together. Concurrent second cancel gets 409 without another restore. Overflow rolls back.
+- Multi-query list/detail/history use repeatable-read snapshots. History sorts created_at DESC,id DESC; no history deletion endpoint exists.
+- `last_movement_at` is derived as MAX(stock_movements.created_at), not a denormalized field. Movement clock_timestamp() is recorded after lock acquisition, not at transaction start.
+- Money uses PostgreSQL INTEGER IDR; order arithmetic uses int64 intermediates and rejects totals above 2147483647. Summary multiplies bigint operands. Extremely large summary values may exceed JavaScript's exact-number range: a documented scale limitation.
+
+## Tests and isolated setup verification
+
+Use dedicated test DBs, never production. Backend integration tests create/drop temporary schemas and require CREATE SCHEMA permission. Without TEST_DATABASE_URL they are **skipped**; green unit-only tests do not prove DB correctness.
 
 ```powershell
-Set-Location D:\project\Inventory_And_Sales
-docker compose ps -a
-# Ulangi setup: tidak menggandakan produk.
-docker compose run --rm setup
-
-# Saat backend dan Vite berjalan: keduanya harus mengembalikan status ok.
-Invoke-RestMethod http://localhost:8080/api/health
-Invoke-RestMethod http://localhost:5173/api/health
-
-Set-Location D:\project\Inventory_And_Sales\backend
+# Root: NEW Compose project/volume; refuses to reuse an existing project.
+.\scripts\verify-clean.ps1
+# Set the printed URL; default port is 55432.
+$env:TEST_DATABASE_URL = 'postgres://stockflow_verify:verify_local_only@127.0.0.1:55432/stockflow_verify?sslmode=disable'
+Set-Location backend
+go test -count=1 -v ./...
+go test -race -count=1 ./... # CGO + supported C compiler required
+go test -count=5 -run 'TestConcurrentOrders|TestOrderAPI|TestConcurrentStockOut' ./internal/orders ./internal/products
 go vet ./...
-go build -o bin/api.exe ./cmd/api
-
-Set-Location D:\project\Inventory_And_Sales\frontend
-npm run typecheck
-npm run build
+go build -o bin/api ./cmd/api
 ```
 
-## Struktur
-
-```text
-backend/
-  cmd/api/           # Entry point HTTP server
-  internal/config/   # Environment validation
-  migrations/        # Schema berversi
-  seeds/             # Seed produk
-  scripts/           # Runner migration dan seed
-frontend/
-  src/               # React entry point dan halaman minimal
-docker-compose.yml
-.env.example
-README.md
-```
-
-Untuk berhenti gunakan `docker compose down` dari root; named volume tetap menyimpan data. `docker compose down -v` menghapus seluruh data proyek dan hanya boleh digunakan jika data development memang boleh dibuang.
-
-## Halaman produk (tahap 5)
-
-Frontend menggunakan backend asli melalui Vite proxy. `src/types.ts` menyimpan shared domain types; `src/api.ts` adalah satu-satunya pemilik fetch, URL, query serialization, dan parsing error. `ApiError` mempertahankan status, code, message, sku, serta available termasuk nilai 0. Tidak ada mock data pada halaman; mock fetch hanya dipakai unit test.
-
-Halaman menyediakan tabel produk, form tambah/edit, delete dengan konfirmasi browser, search debounce 350 ms, filter All/Active/Inactive/Low stock, pagination, dan summary global. Search/filter/ukuran halaman mengembalikan page ke 1. AbortController dan version gate menolak response lama, termasuk saat kriteria berubah sebelum debounce selesai. Mutation sukses memuat ulang tabel serta summary; halaman dikoreksi jika penghapusan membuat page saat ini kosong. Harga IDR, badge status, stok rendah, dan movement relatif ditampilkan; timestamp lengkap tersedia pada tooltip.
-
-Loading ditampilkan selama request; empty dapat dicapai dengan search yang tidak cocok; error/retry dapat dicapai dengan menghentikan backend lalu Refresh. Error mutation ditampilkan tanpa menutup form. Table dapat di-scroll horizontal di layar kecil; form memakai modal native dengan keyboard/focus behavior browser. Summary global tidak dihitung dari halaman/filter lokal.
+Native Windows without CGO/compiler cannot run race. A Linux alternative actually used here (replace project/network name when different):
 
 ```powershell
-Set-Location D:\project\Inventory_And_Sales\frontend
+# Root, with dedicated verification PostgreSQL running
+docker run --rm --network stockflow-final-20261125_default `
+  -e TEST_DATABASE_URL=postgres://stockflow_verify:verify_local_only@postgres:5432/stockflow_verify?sslmode=disable `
+  -v "${PWD}/backend:/workspace" -w /workspace golang:1.26 `
+  sh -c 'go test -race -count=1 ./...'
+```
+
+Real PostgreSQL concurrency checks are independent of race detection: 16 simultaneous two-SKU orders with stock five must yield five successes and correct stock/order/item/movement counts; two concurrent cancels restore once; 16 stock-outs from stock five yield exactly five successes.
+
+```powershell
+Set-Location frontend
 npm ci
-npm run typecheck
 npm test
+npm run typecheck
 npm run build
+# Optional real-API checks; only a dedicated verification backend/DB!
+$env:STOCKFLOW_ORDER_TEST_API = 'http://127.0.0.1:5175'
+npm test -- src/order.integration.test.ts
+Remove-Item Env:\STOCKFLOW_ORDER_TEST_API
+$env:STOCKFLOW_TEST_API = 'http://127.0.0.1:5175'
+npm test -- src/stock.integration.test.ts
+# Stop the test backend, then set STOCKFLOW_TEST_OFFLINE=1 for its offline case.
 ```
 
-Vitest menguji validasi harga/nama/SKU, normalisasi payload, reset pagination, request version gate, waktu relatif, format IDR, query encoding, typed error, network/abort handling, dan respons 204. Production build menghasilkan static bundle; deployment production perlu reverse proxy `/api` ke Go (proxy Vite hanya development). Belum ada browser E2E otomatis.
+Optional frontend integration tests retain audit records and create products with final stock zero. Ordinary unit runs skip them. See `VERIFICATION.md` for requirement audit, actual results, cache conditions and browser checks.
+Vitest runs files serially because live tests compare a global summary baseline; do not run competing writers against that verification database. An interrupted/failed test may retain a nonzero fixture, so keep all live runs on the dedicated database.
 
-## Stock adjustment & movement history (tahap 6)
+## Assumptions, limitations, next improvements
 
-Action **Adjustment** membuka modal direction in/out, qty integer positif (1–2147483647), dan note opsional. Submit memakai synchronous gate untuk menolak submit ganda dan controls disabled selama saving. Error mempertahankan input; `409 INSUFFICIENT_STOCK` menampilkan quantity tersedia termasuk nol. Pada gangguan koneksi/server, periksa history sebelum mengulang karena request yang kehilangan respons mungkin sudah diproses server.
+- Inactive products can be ordered: the contract does not prohibit it. Customer/SKU are trimmed; SKU identity is case-sensitive. Low stock includes inactive products.
+- Local-development assignment, not a production security system: no auth/RBAC, TLS deployment, backups or rate limiting.
+- No order list or bookmarked detail route. Leaving detail discards that local view. Movement history is unpaginated.
+- No Idempotency-Key (bonus deliberately omitted). A lost response may mean a mutation committed. Submit guards prevent simultaneous requests, not safe blind retries; inspect history/order status first.
+- Server prices/stock may change after selection; backend is authoritative. No final-total prediction is used.
+- A local browser audit is not a maintained cross-browser E2E suite. Production setup/download performance is network-dependent.
+- Reproduce the local Chrome audit with `scripts/verify-browser.mjs`: run the dedicated seeded verification API/Vite at port 5175, set `STOCKFLOW_BROWSER_VERIFY=1`, then `node scripts/verify-browser.mjs` from root. Override `CHROME_PATH` or `STOCKFLOW_BROWSER_ORIGIN` as needed. It uses Chrome's debugging protocol without extra packages, writes screenshots/results under ignored `.tools`, and creates retained audit fixtures. It must not target business data. Debug port 9223 must be free.
+- Future work, not implemented: idempotency, CI/browser E2E, authenticated deployment, movement pagination, persistent order detail and exact large-summary transport. No bonus feature endpoints are included.
 
-Setelah sukses modal ditutup/reset, produk dan summary dimuat ulang, serta panel history produk terkait dibuka/disegarkan. **History** juga dapat dibuka tanpa adjustment; datanya dari API, terbaru dahulu (created_at DESC, id DESC), dengan loading, empty, error/retry, dan refresh manual. Timestamp last movement dibaca ulang dari backend, bukan dibuat secara optimistis di frontend.
+### Honest effort and assignment restriction
 
-Tes unit standar mencakup validasi qty/note, error stok tersedia, kegagalan backend, submission gate, dan kontrak stock/history client. Tes integrasi frontend opt-in (`src/stock.integration.test.ts`) memakai backend asli melalui `STOCKFLOW_TEST_API` (contoh `http://127.0.0.1:5174` untuk proxy development). Tes membuat produk khusus verifikasi dengan saldo akhir nol dan menyimpan audit history; tidak menyentuh stok produk bisnis. Jalankan hanya pada database development/test yang sesuai. Mode `STOCKFLOW_TEST_OFFLINE=1` memverifikasi error dengan backend pengujian sudah dihentikan.
+No timesheet or trustworthy active-hours record was provided: **focused hours are unknown, not fabricated**. Commit timestamps are activity evidence, not hours worked. First foundation commit: November 25, 2026, 14:49:19 +07:00; stage 7 commit: 17:13:16 +07:00. The final audit wall-clock interval is recorded in `VERIFICATION.md`, not claimed as focused working hours.
 
-## Sales order interface (stage 7)
-
-The interface is in English, including validation, errors, accessibility labels and timestamps; currency remains IDR. **Create order** opens a customer/items form. Product options come from searchable, paginated `/api/products` results (all statuses, matching backend rules), not mock data or an assumed first page. Selected SKUs remain selected when browsing other option pages. The server revalidates current stock and prices.
-
-Client validation requires a customer, at least one item, valid SKUs, positive int32 quantities and unique case-sensitive SKUs after trimming. Synchronous submission locking prevents duplicate create/cancel requests, with controls disabled while processing. Backend 400 messages remain visible; SKU-specific errors highlight the matching item and show available quantity including zero. Failed creates retain form inputs. No final total is calculated by the client.
-
-Successful creation opens detail from the server response, displaying customer, item quantities, server unit-price snapshots, server total, status, created time and cancellation time. **Refresh detail** reads `GET /api/orders/{id}`. **Cancel order** requires confirmation and updates detail from the cancel response; product stock, global summary and open movement history are refreshed. Returning to products refreshes again so restored stock is visible. No order-list API is added. Leaving the order screen discards its local form/detail; this stage has no order history list or persistent navigation.
-
-An interrupted create response has an ambiguous outcome because the backend has no idempotency key. Do not blindly resubmit; if an ID is known, refresh its detail. Unit tests cover pure order validation, payload normalization, SKU/available errors and the existing API endpoint contracts. Run `npm test`, `npm run typecheck`, and `npm run build` from `D:\project\Inventory_And_Sales\frontend`.
-
-## Sales orders (tahap 4)
-
-| Method | Path | Respons sukses |
-|---|---|---|
-| POST | `/api/orders` | 201 order lengkap dan header Location |
-| GET | `/api/orders/{id}` | 200 order lengkap |
-| POST | `/api/orders/{id}/cancel` | 200 order dengan status CANCELLED |
-
-Create hanya menerima `customer` dan `items` berisi `sku`/`qty`:
-
-```json
-{"customer":"Kedai Pagi","items":[{"sku":"KOP-AR250","qty":2},{"sku":"TEH-HJ100","qty":1}]}
-```
-
-Customer/SKU di-trim. Customer kosong, items kosong, SKU kosong/duplikat/tidak dikenal, qty bukan integer positif ditolak 400. Duplicate diperiksa setelah trim, case-sensitive sesuai SKU database. `unit_price`, `total`, `status`, maupun field asing dari client ditolak. Produk inactive masih boleh dipesan karena kontrak belum melarangnya.
-
-Response order berbentuk `{id,customer,status,total,created_at,cancelled_at,items:[{id,order_id,sku,qty,unit_price}]}`; timestamp UTC. Harga item diambil dari produk yang terkunci dan disimpan sebagai snapshot; perubahan harga produk setelah create tidak mengubah order historis. Total dihitung dengan intermediate int64 dan dibatasi 2147483647 IDR agar sesuai kolom INTEGER. Pelampauan total: 400 `ORDER_TOTAL_OVERFLOW`.
-
-Create mengambil seluruh row lock produk dengan `ORDER BY id FOR UPDATE`, bukan mengikuti urutan input. Semua SKU, total, dan ketersediaan stok diperiksa sebelum penulisan pertama. Order/items/decrement stok/movement out ditulis dalam satu transaksi; kegagalan apa pun me-rollback semuanya. Stok kurang: 409 `{"error":{"code":"INSUFFICIENT_STOCK","message":"Insufficient stock for SKU: ...","sku":"...","available":0}}`. SKU tidak dikenal: 400 `UNKNOWN_SKU`.
-
-Cancel mengambil lock order dan mengecek status di transaksi, lalu mengunci semua produk dalam urutan ID yang sama. Restore stok, movement in, status CANCELLED, dan cancelled_at disimpan atomik. Cancel kedua (termasuk concurrent) mendapat 409 `ORDER_ALREADY_CANCELLED`, tanpa restore tambahan. Jika restore melewati batas INTEGER: 409 `STOCK_LIMIT_EXCEEDED` dan tidak ada perubahan. Order tidak ditemukan: 404 `ORDER_NOT_FOUND`. Movement memakai note `Sales order #ID: in/out`; history tidak dihapus. Detail dibaca dalam snapshot repeatable-read.
-
-Seed `003_orders.sql` dijalankan oleh setup dalam transaksi dan advisory lock yang sama. Marker `seed_runs.sample_orders_v1` baru disimpan setelah seluruh order/stok/movement sukses. Pengulangan tidak membuat order atau mengurangi stok lagi; jika stok development sudah tidak cukup, setup gagal dan rollback tanpa mereset stok. Seed bukan untuk database produksi.
-
-```powershell
-$body = @{ customer = 'Kedai Pagi'; items = @(@{ sku = 'KOP-AR250'; qty = 2 }) } | ConvertTo-Json -Depth 4
-$order = Invoke-RestMethod http://localhost:8080/api/orders -Method Post -ContentType application/json -Body $body
-Invoke-RestMethod "http://localhost:8080/api/orders/$($order.id)"
-Invoke-RestMethod "http://localhost:8080/api/orders/$($order.id)/cancel" -Method Post
-```
-
-Integration test order memakai `TEST_DATABASE_URL` khusus test dan schema sementara. Pool menyediakan hingga 16 koneksi; test memastikan beberapa PostgreSQL session berbeda. Cakupan meliputi multi-item, snapshot harga, validasi sebelum write, overflow, stok kurang tanpa perubahan, rollback kegagalan movement, cancel concurrent tepat sekali, dan 16 create concurrent dengan urutan SKU berlawanan. Jalankan seluruh pemeriksaan backend seperti petunjuk test di bawah. Request timeout/retry client belum memiliki Idempotency-Key; jangan melakukan retry create secara buta.
-
-## Stock adjustment dan history (tahap 3)
-
-- `POST /api/products/{id}/stock`: body `{"type":"in","qty":10,"note":"Penerimaan barang"}`. Sukses 200 `{product,movement}`; type hanya `in`/`out`, qty integer positif maksimal 2147483647. Note opsional, default string kosong. Null, field asing, dan tipe salah ditolak sesuai decoder JSON terpusat.
-- `GET /api/products/{id}/movements`: 200 `{data:[...]}`, terbaru dahulu berdasarkan `created_at DESC, id DESC`; tanpa history mengembalikan array kosong. Timestamp UTC ISO 8601; note dapat null untuk data lama. History saat ini belum dipaginasi.
-- Produk tidak ditemukan: 404 `PRODUCT_NOT_FOUND`; validasi salah: 400. Stock out berlebih: 409 `{"error":{"code":"INSUFFICIENT_STOCK","message":"Insufficient stock","available":0}}` (available tetap ada ketika nol). Stock in yang melewati batas INTEGER: 409 `STOCK_LIMIT_EXCEEDED`.
-- Adjustment mengambil `SELECT ... FOR UPDATE` pada produk sebelum membaca stok. Update stok dan insert movement berada dalam satu transaksi; kegagalan insert/commit tidak menghasilkan perubahan parsial. Row lock menserialisasi adjustment concurrent serta berkoordinasi dengan update/delete produk. Tidak ada perubahan stok berdasarkan pembacaan tanpa proteksi.
-- Movement memakai `clock_timestamp()` saat insert agar timestamp mencerminkan waktu penulisan setelah menunggu lock. History menggunakan snapshot repeatable-read; tidak ada endpoint menghapus history.
-
-Integration test memakai PostgreSQL asli, mencakup stock in/out, penolakan input, rollback ketika stok kurang, rollback jika insert movement gagal, history, batas integer, dan 16 request stock out bersamaan (stok 5: tepat 5 sukses, sisanya 409 available 0).
-
-Jalankan tes hanya pada database test khusus, bukan produksi. Contoh PowerShell dari root, setelah environment PostgreSQL diekspor sesuai `.env` lokal:
-
-```powershell
-docker compose exec -T postgres createdb -U $env:POSTGRES_USER stockflow_test
-# Ganti user/password/port agar sesuai konfigurasi lokal.
-$env:TEST_DATABASE_URL = 'postgres://stockflow:stockflow_local_only@localhost:5432/stockflow_test?sslmode=disable'
-Set-Location D:\project\Inventory_And_Sales\backend
-go test -count=1 -v ./...
-go vet ./...
-go build -o bin/api.exe ./cmd/api
-```
-
-Setiap integration test membuat schema terisolasi di database test dan membersihkannya setelah selesai. Tanpa `TEST_DATABASE_URL`, integration test di-skip. Database sementara khusus dipakai saat verifikasi tahap 3; database development/produksi tidak digunakan untuk fixture test.
-
-## API produk (tahap 2)
-
-| Method | Path | Respons sukses |
-|---|---|---|
-| GET | `/api/products?search=&page=1&limit=20&filter=all` | 200 `{data,page,limit,total}` |
-| GET | `/api/products/summary` | 200 `{total_products,active_products,total_stock_value,low_stock_count}` |
-| POST | `/api/products` | 201 produk dan header `Location` |
-| PUT | `/api/products/{id}` | 200 produk terbaru |
-| DELETE | `/api/products/{id}` | 204 tanpa body |
-
-Body POST/PUT: `{"sku":"KOP-NEW","name":"Kopi Baru","price":65000,"is_active":true}`.
-`sku`, `name`, dan `price` wajib pada kedua operasi; whitespace tepi SKU/nama dibuang. Harga harus integer 0–2147483647 sesuai kolom PostgreSQL INTEGER. `is_active` opsional: default true pada create, dipertahankan pada update jika tidak diberikan. Keunikan SKU bersifat case-sensitive sesuai constraint database; search case-insensitive dan mencocokkan substring literal SKU/nama (bukan wildcard SQL).
-
-`stock`, ID, timestamp, dan field tidak dikenal ditolak. Produk baru selalu stok 0; update hanya mengubah SKU, nama, harga, dan status. Perubahan stok hanya boleh melalui transaksi movement pada tahap berikutnya.
-
-Setiap produk menyertakan `last_movement_at` berupa timestamp RFC3339/ISO 8601 atau null, dihitung menggunakan `MAX(stock_movements.created_at)` pada setiap query—bukan field tersimpan yang dapat kedaluwarsa. List diurutkan ID ascending; count dan data dibaca dalam satu snapshot repeatable-read.
-
-Pagination: default page 1/limit 20; page 1–2147483647, limit 1–100. Halaman di luar hasil tetap 200 dengan `data: []` dan total yang benar. Parameter tidak dikenal, berulang, kosong untuk page/limit, atau invalid ditolak 400. Search kosong berarti semua produk.
-
-Ekstensi filter: `filter=all|active|inactive|low-stock`. Low-stock berarti stok <= 10, termasuk produk inactive. Summary bersifat global: semua produk tanpa filter/search/pagination; total nilai stok adalah jumlah `price * stock` seluruh produk termasuk inactive, dalam integer IDR. Parameter query pada summary tidak memengaruhi hasil.
-
-### Aturan history dan SKU
-
-- Update SKU yang sudah direferensikan `sales_order_items` ditolak 409 `SKU_IN_USE`, termasuk order cancelled. Tidak ada cascade perubahan SKU historis. Field non-SKU tetap boleh diedit.
-- Movement mereferensikan ID produk: SKU produk dengan movement saja masih boleh diedit.
-- Delete produk dengan movement ditolak 409 `PRODUCT_HAS_HISTORY`; history tidak dihapus.
-- Delete produk yang hanya direferensikan order ditolak 409 `PRODUCT_IN_USE`.
-- Update/delete mengambil row lock produk dalam transaksi. Foreign key tetap menjadi proteksi referensi concurrent; tidak ada cascade delete atau update.
-
-### Error
-
-```json
-{"error":{"code":"VALIDATION_ERROR","message":"sku is required"}}
-```
-
-Kode utama: 400 `INVALID_JSON`, `VALIDATION_ERROR`, `INVALID_QUERY`, `INVALID_ID`; 404 `PRODUCT_NOT_FOUND`; 409 `SKU_EXISTS`, `SKU_IN_USE`, `PRODUCT_HAS_HISTORY`, `PRODUCT_IN_USE`; 413 `BODY_TOO_LARGE`; 415 `UNSUPPORTED_MEDIA_TYPE`; 500 `INTERNAL_ERROR`. Error database hanya dicatat di server, tidak dikirim ke client.
-
-POST/PUT wajib `Content-Type: application/json`, body maksimal 1 MiB, tepat satu object JSON. Salah tipe, null, field tidak dikenal, JSON rusak, dan body tambahan ditolak. Harga decimal/string tidak dikonversi otomatis.
-
-Contoh PowerShell:
-
-```powershell
-Invoke-RestMethod 'http://localhost:8080/api/products?search=kopi&page=1&limit=10&filter=active'
-Invoke-RestMethod 'http://localhost:8080/api/products/summary'
-$body = @{ sku = 'NEW-001'; name = 'Kopi Baru'; price = 65000 } | ConvertTo-Json
-$product = Invoke-RestMethod http://localhost:8080/api/products -Method Post -ContentType application/json -Body $body
-Invoke-RestMethod "http://localhost:8080/api/products/$($product.id)" -Method Put -ContentType application/json -Body $body
-Invoke-RestMethod "http://localhost:8080/api/products/$($product.id)" -Method Delete
-```
-
-### Test backend
-
-```powershell
-Set-Location D:\project\Inventory_And_Sales\backend
-$env:TEST_DATABASE_URL = $env:DATABASE_URL # set terlebih dahulu jika belum diekspor
-go test -count=1 -v ./...
-go vet ./...
-go build -o bin/api.exe ./cmd/api
-```
-
-Gunakan database development/test, bukan production. Integration test PostgreSQL membuat schema sementara, menerapkan migration, lalu menghapus schema saat selesai; user DB harus memiliki izin CREATE SCHEMA. Tanpa `TEST_DATABASE_URL`, integration test di-skip dan unit test tetap berjalan. Test mencakup CRUD, validasi, pagination/search/filter, MAX movement, larangan modifikasi stok, proteksi history/order, summary global, dan sanitasi error server.
+The assignment prohibits AI code generation. This implementation used AI assistance at the user's request after disclosure. It must not be represented as compliant with that non-code rule without evaluator approval.

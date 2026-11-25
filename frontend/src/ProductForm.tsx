@@ -3,6 +3,7 @@ import type { FormEvent } from 'react'
 import type { Product, ProductInput } from './types'
 import { productInput, validateProduct } from './productLogic'
 import type { FormErrors, ProductFormValues } from './productLogic'
+import { SubmissionGate } from './stockLogic'
 
 interface Props {
   product: Product | null
@@ -14,6 +15,7 @@ interface Props {
 
 export default function ProductForm({ product, saving, error, onClose, onSave }: Props) {
   const dialog = useRef<HTMLDialogElement>(null)
+  const submissions = useRef(new SubmissionGate())
   const [values, setValues] = useState<ProductFormValues>({ sku: product?.sku ?? '', name: product?.name ?? '',
     price: product ? String(product.price) : '', is_active: product?.is_active ?? true })
   const [errors, setErrors] = useState<FormErrors>({})
@@ -26,7 +28,7 @@ export default function ProductForm({ product, saving, error, onClose, onSave }:
     event.preventDefault()
     const nextErrors = validateProduct(values)
     setErrors(nextErrors)
-    if (Object.keys(nextErrors).length === 0) void onSave(productInput(values))
+    if (!saving && Object.keys(nextErrors).length === 0) void submissions.current.run(() => onSave(productInput(values)))
   }
   return <dialog ref={dialog} aria-labelledby="form-title" onCancel={event => { event.preventDefault(); if (!saving) onClose() }}>
     <form onSubmit={submit} noValidate>
