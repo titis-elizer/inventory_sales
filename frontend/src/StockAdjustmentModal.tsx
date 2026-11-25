@@ -41,21 +41,21 @@ export default function StockAdjustmentModal({ product, onClose, onSuccess }: Pr
 
   return <dialog ref={dialog} aria-labelledby="stock-title" onCancel={event => { event.preventDefault(); if (!saving) onClose() }}>
     <form onSubmit={submit} noValidate aria-busy={saving}>
-      <h2 id="stock-title">Adjustment stok — {product.sku}</h2>
-      <p>{product.name} · Stok saat modal dibuka: {product.stock}. Stok aktual divalidasi oleh server.</p>
+      <h2 id="stock-title">Stock adjustment — {product.sku}</h2>
+      <p>{product.name} · Stock when opened: {product.stock}. The server validates the current stock.</p>
       {error && <div className="alert" role="alert">{error}</div>}
       <fieldset disabled={saving}>
         <label htmlFor="stock-type">Direction</label>
         <select id="stock-type" value={type} onChange={e => setType(e.target.value as StockAdjustment['type'])}>
-          <option value="in">In — stok masuk</option><option value="out">Out — stok keluar</option>
+          <option value="in">In — stock received</option><option value="out">Out — stock removed</option>
         </select>
-        <label htmlFor="stock-qty">Qty</label>
+        <label htmlFor="stock-qty">Quantity</label>
         <input id="stock-qty" autoFocus inputMode="numeric" value={qty} onChange={e => setQty(e.target.value)} />
-        <label htmlFor="stock-note">Note (opsional)</label>
+        <label htmlFor="stock-note">Note (optional)</label>
         <textarea id="stock-note" rows={3} value={note} onChange={e => setNote(e.target.value)} />
       </fieldset>
-      <div className="actions"><button type="button" className="secondary" disabled={saving} onClick={onClose}>Batal</button>
-        <button disabled={saving}>{saving ? 'Menyimpan…' : 'Simpan adjustment'}</button></div>
+      <div className="actions"><button type="button" className="secondary" disabled={saving} onClick={onClose}>Cancel</button>
+        <button disabled={saving}>{saving ? 'Saving…' : 'Save adjustment'}</button></div>
     </form>
   </dialog>
 }

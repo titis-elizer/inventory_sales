@@ -4,7 +4,7 @@ import { stockError, SubmissionGate, validateAdjustment } from './stockLogic'
 
 describe('stock adjustment validation', () => {
   it.each(['', '0', '-1', '1.5', '1e3', ' 1 ', '2147483648', 'NaN', 'Infinity'])('rejects qty %s', qty => {
-    expect(validateAdjustment(qty, '')).toContain('integer positif')
+    expect(validateAdjustment(qty, '')).toContain('positive integer')
   })
   it.each(['1', '2147483647'])('accepts positive int32 qty %s', qty => {
     expect(validateAdjustment(qty, 'optional note')).toBe('')
@@ -15,11 +15,11 @@ describe('stock adjustment validation', () => {
   })
   it.each([0, 7])('displays available quantity %s on insufficient stock', available => {
     expect(stockError(new ApiError(409, 'INSUFFICIENT_STOCK', 'insufficient', undefined, available)))
-      .toBe(`Stok tidak cukup. Jumlah tersedia: ${available}.`)
+      .toBe(`Insufficient stock. Available quantity: ${available}.`)
   })
   it.each([0, 500, 502, 503])('explains backend unavailability (%s) and avoids blind retries', status => {
-    expect(stockError(new ApiError(status, 'NETWORK_ERROR', 'failure'))).toContain('Periksa koneksi/server')
-    expect(stockError(new ApiError(status, 'NETWORK_ERROR', 'failure'))).toContain('periksa history')
+    expect(stockError(new ApiError(status, 'NETWORK_ERROR', 'failure'))).toContain('Check your connection and the server')
+    expect(stockError(new ApiError(status, 'NETWORK_ERROR', 'failure'))).toContain('check movement history')
   })
   it('preserves other backend errors', () => {
     expect(stockError(new ApiError(409, 'STOCK_LIMIT_EXCEEDED', 'Stock limit'))).toContain('STOCK_LIMIT_EXCEEDED')

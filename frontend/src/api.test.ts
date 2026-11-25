@@ -22,16 +22,16 @@ describe('API client', () => {
     expect(fetchMock).toHaveBeenCalledWith('/api/products/3/movements', { signal })
   })
   it('preserves code, message, sku, and available including zero', () => {
-    const error = parseApiError(409, { error: { code: 'INSUFFICIENT_STOCK', message: 'Stok kurang', sku: 'COF', available: 0 } })
+    const error = parseApiError(409, { error: { code: 'INSUFFICIENT_STOCK', message: 'Insufficient stock', sku: 'COF', available: 0 } })
     expect(error).toBeInstanceOf(ApiError)
-    expect(error).toMatchObject({ status: 409, code: 'INSUFFICIENT_STOCK', message: 'Stok kurang', sku: 'COF', available: 0 })
+    expect(error).toMatchObject({ status: 409, code: 'INSUFFICIENT_STOCK', message: 'Insufficient stock', sku: 'COF', available: 0 })
   })
   it('handles non-JSON error bodies safely', () => {
     expect(parseApiError(502, '<html>bad gateway</html>')).toMatchObject({ code: 'HTTP_ERROR', status: 502 })
   })
   it('encodes search and parameters centrally', () => {
-    const params = new URLSearchParams(productQueryString({ search: 'kopi & teh', page: 2, limit: 10, filter: 'low-stock' }))
-    expect(params.get('search')).toBe('kopi & teh')
+    const params = new URLSearchParams(productQueryString({ search: 'coffee & tea', page: 2, limit: 10, filter: 'low-stock' }))
+    expect(params.get('search')).toBe('coffee & tea')
     expect(params.get('page')).toBe('2')
     expect(params.get('filter')).toBe('low-stock')
   })

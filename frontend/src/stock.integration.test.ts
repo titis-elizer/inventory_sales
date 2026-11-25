@@ -25,7 +25,7 @@ it.skipIf(!origin || offline)('real backend: in/out, insufficient stock, last mo
   let failure: unknown
   try { await api.adjustStock(product.id, { type: 'out', qty: 4, note: 'Must fail' }) } catch (error) { failure = error }
   expect(failure).toMatchObject({ status: 409, code: 'INSUFFICIENT_STOCK', available: 3 })
-  expect(stockError(failure)).toContain('Jumlah tersedia: 3')
+  expect(stockError(failure)).toContain('Available quantity: 3')
   const history = (await api.movements(product.id)).data
   expect(history.map(movement => movement.id)).toEqual([outgoing.movement.id, incoming.movement.id])
   const list = await api.products({ search: product.sku, page: 1, limit: 10, filter: 'all' })
@@ -41,6 +41,6 @@ it.skipIf(!origin || !offline)('real stopped backend: understandable error from 
     let failure: unknown
     try { await action() } catch (error) { failure = error }
     expect(failure).toBeDefined()
-    expect(stockError(failure)).toContain('Periksa koneksi/server')
+    expect(stockError(failure)).toContain('Check your connection and the server')
   }
 }, 15000)

@@ -24,7 +24,7 @@ export function parseApiError(status: number, body: unknown): ApiError {
   const error = isRecord(body) && isRecord(body.error) ? body.error : {}
   return new ApiError(status,
     typeof error.code === 'string' ? error.code : 'HTTP_ERROR',
-    typeof error.message === 'string' ? error.message : `Permintaan gagal (HTTP ${status}).`,
+    typeof error.message === 'string' ? error.message : `Request failed (HTTP ${status}).`,
     typeof error.sku === 'string' ? error.sku : undefined,
     typeof error.available === 'number' ? error.available : undefined)
 }
@@ -40,7 +40,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     response = await fetch(`/api${path}`, init)
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') throw error
-    throw new ApiError(0, 'NETWORK_ERROR', 'Tidak dapat terhubung ke server. Periksa koneksi dan backend.')
+    throw new ApiError(0, 'NETWORK_ERROR', 'Unable to connect to the server. Check your connection and the backend.')
   }
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null)
@@ -48,7 +48,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   }
   if (response.status === 204) return undefined as T
   try { return await response.json() as T } catch {
-    throw new ApiError(response.status, 'INVALID_RESPONSE', 'Respons server bukan JSON yang valid.')
+    throw new ApiError(response.status, 'INVALID_RESPONSE', 'The server returned an invalid JSON response.')
   }
 }
 
