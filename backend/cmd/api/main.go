@@ -12,6 +12,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"inventory-and-sales/backend/internal/config"
+	"inventory-and-sales/backend/internal/httpx"
+	"inventory-and-sales/backend/internal/products"
 )
 
 func main() {
@@ -39,16 +41,15 @@ func run() error {
 		return errors.New("database connection failed; check environment and database readiness")
 	}
 	mux := http.NewServeMux()
+	products.Register(mux, db)
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
 		defer cancel()
-		w.Header().Set("Content-Type", "application/json")
 		if db.Ping(ctx) != nil {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte(`{"status":"unavailable"}`))
+			httpx.Fail(w, http.StatusServiceUnavailable, "DATABASE_UNAVAILABLE", "Database is unavailable")
 			return
 		}
-		_, _ = w.Write([]byte(`{"status":"ok"}`))
+		httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 	server := &http.Server{Addr: ":" + cfg.Port, Handler: mux,
 		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second,

@@ -1,6 +1,6 @@
 # StockFlow — Inventory & Sales
 
-Tahap 1: fondasi proyek, tanpa business endpoint. Frontend React + TypeScript/Vite; backend Go `net/http` + `pgx`; PostgreSQL 17. Folder repository saat ini bernama `Inventory_And_Sales`, dengan layout backend/frontend sesuai requirement.
+Fondasi proyek dan API produk. Frontend React + TypeScript/Vite; backend Go `net/http` + `pgx`; PostgreSQL 17. Folder repository saat ini bernama `Inventory_And_Sales`, dengan layout backend/frontend sesuai requirement.
 
 ## Prasyarat
 
@@ -28,7 +28,7 @@ Set-Location D:\project\Inventory_And_Sales
 .\backend\run.ps1
 ```
 
-Script membaca `PORT` dan `DATABASE_URL` dari `.env` root. Alternatif lintas platform: ekspor kedua environment variable tersebut lalu jalankan `go run ./cmd/api` dari `backend/`. Backend memvalidasi konfigurasi, memeriksa koneksi DB saat startup, menyediakan shutdown terkontrol, dan berhenti jika koneksi awal gagal. Tidak ada business route; hanya `GET /api/health` untuk pemeriksaan infrastruktur.
+Script membaca `PORT` dan `DATABASE_URL` dari `.env` root. Alternatif lintas platform: ekspor kedua environment variable tersebut lalu jalankan `go run ./cmd/api` dari `backend/`. Backend memvalidasi konfigurasi, memeriksa koneksi DB saat startup, menyediakan shutdown terkontrol, dan berhenti jika koneksi awal gagal. `GET /api/health` memeriksa koneksi database.
 
 Frontend, terminal kedua:
 
@@ -98,3 +98,65 @@ README.md
 ```
 
 Untuk berhenti gunakan `docker compose down` dari root; named volume tetap menyimpan data. `docker compose down -v` menghapus seluruh data proyek dan hanya boleh digunakan jika data development memang boleh dibuang.
+
+## API produk (tahap 2)
+
+| Method | Path | Respons sukses |
+|---|---|---|
+| GET | `/api/products?search=&page=1&limit=20&filter=all` | 200 `{data,page,limit,total}` |
+| GET | `/api/products/summary` | 200 `{total_products,active_products,total_stock_value,low_stock_count}` |
+| POST | `/api/products` | 201 produk dan header `Location` |
+| PUT | `/api/products/{id}` | 200 produk terbaru |
+| DELETE | `/api/products/{id}` | 204 tanpa body |
+
+Body POST/PUT: `{"sku":"KOP-NEW","name":"Kopi Baru","price":65000,"is_active":true}`.
+`sku`, `name`, dan `price` wajib pada kedua operasi; whitespace tepi SKU/nama dibuang. Harga harus integer 0–2147483647 sesuai kolom PostgreSQL INTEGER. `is_active` opsional: default true pada create, dipertahankan pada update jika tidak diberikan. Keunikan SKU bersifat case-sensitive sesuai constraint database; search case-insensitive dan mencocokkan substring literal SKU/nama (bukan wildcard SQL).
+
+`stock`, ID, timestamp, dan field tidak dikenal ditolak. Produk baru selalu stok 0; update hanya mengubah SKU, nama, harga, dan status. Perubahan stok hanya boleh melalui transaksi movement pada tahap berikutnya.
+
+Setiap produk menyertakan `last_movement_at` berupa timestamp RFC3339/ISO 8601 atau null, dihitung menggunakan `MAX(stock_movements.created_at)` pada setiap query—bukan field tersimpan yang dapat kedaluwarsa. List diurutkan ID ascending; count dan data dibaca dalam satu snapshot repeatable-read.
+
+Pagination: default page 1/limit 20; page 1–2147483647, limit 1–100. Halaman di luar hasil tetap 200 dengan `data: []` dan total yang benar. Parameter tidak dikenal, berulang, kosong untuk page/limit, atau invalid ditolak 400. Search kosong berarti semua produk.
+
+Ekstensi filter: `filter=all|active|inactive|low-stock`. Low-stock berarti stok <= 10, termasuk produk inactive. Summary bersifat global: semua produk tanpa filter/search/pagination; total nilai stok adalah jumlah `price * stock` seluruh produk termasuk inactive, dalam integer IDR. Parameter query pada summary tidak memengaruhi hasil.
+
+### Aturan history dan SKU
+
+- Update SKU yang sudah direferensikan `sales_order_items` ditolak 409 `SKU_IN_USE`, termasuk order cancelled. Tidak ada cascade perubahan SKU historis. Field non-SKU tetap boleh diedit.
+- Movement mereferensikan ID produk: SKU produk dengan movement saja masih boleh diedit.
+- Delete produk dengan movement ditolak 409 `PRODUCT_HAS_HISTORY`; history tidak dihapus.
+- Delete produk yang hanya direferensikan order ditolak 409 `PRODUCT_IN_USE`.
+- Update/delete mengambil row lock produk dalam transaksi. Foreign key tetap menjadi proteksi referensi concurrent; tidak ada cascade delete atau update.
+
+### Error
+
+```json
+{"error":{"code":"VALIDATION_ERROR","message":"sku is required"}}
+```
+
+Kode utama: 400 `INVALID_JSON`, `VALIDATION_ERROR`, `INVALID_QUERY`, `INVALID_ID`; 404 `PRODUCT_NOT_FOUND`; 409 `SKU_EXISTS`, `SKU_IN_USE`, `PRODUCT_HAS_HISTORY`, `PRODUCT_IN_USE`; 413 `BODY_TOO_LARGE`; 415 `UNSUPPORTED_MEDIA_TYPE`; 500 `INTERNAL_ERROR`. Error database hanya dicatat di server, tidak dikirim ke client.
+
+POST/PUT wajib `Content-Type: application/json`, body maksimal 1 MiB, tepat satu object JSON. Salah tipe, null, field tidak dikenal, JSON rusak, dan body tambahan ditolak. Harga decimal/string tidak dikonversi otomatis.
+
+Contoh PowerShell:
+
+```powershell
+Invoke-RestMethod 'http://localhost:8080/api/products?search=kopi&page=1&limit=10&filter=active'
+Invoke-RestMethod 'http://localhost:8080/api/products/summary'
+$body = @{ sku = 'NEW-001'; name = 'Kopi Baru'; price = 65000 } | ConvertTo-Json
+$product = Invoke-RestMethod http://localhost:8080/api/products -Method Post -ContentType application/json -Body $body
+Invoke-RestMethod "http://localhost:8080/api/products/$($product.id)" -Method Put -ContentType application/json -Body $body
+Invoke-RestMethod "http://localhost:8080/api/products/$($product.id)" -Method Delete
+```
+
+### Test backend
+
+```powershell
+Set-Location D:\project\Inventory_And_Sales\backend
+$env:TEST_DATABASE_URL = $env:DATABASE_URL # set terlebih dahulu jika belum diekspor
+go test -count=1 -v ./...
+go vet ./...
+go build -o bin/api.exe ./cmd/api
+```
+
+Gunakan database development/test, bukan production. Integration test PostgreSQL membuat schema sementara, menerapkan migration, lalu menghapus schema saat selesai; user DB harus memiliki izin CREATE SCHEMA. Tanpa `TEST_DATABASE_URL`, integration test di-skip dan unit test tetap berjalan. Test mencakup CRUD, validasi, pagination/search/filter, MAX movement, larangan modifikasi stok, proteksi history/order, summary global, dan sanitasi error server.
