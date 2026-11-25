@@ -1,0 +1,10 @@
+.env
+node_modules/
+dist/
+coverage/
+*.exe
+*.test
+*.log
+.DS_Store
+backend/bin/
+.tools/
