@@ -1,10 +1,10 @@
 # StockFlow — Inventory & Sales
 
-React 19 + strict TypeScript/Vite, Go `net/http`/`pgx`, PostgreSQL 17. All application flows use the real API; response mocks exist only in unit tests. The repository is named `Inventory_And_Sales` and contains the required backend/frontend/Compose layout.
+Inventory and sales management built with React 19, strict TypeScript, Vite, Go and PostgreSQL 17. The frontend connects to the Go API through a Vite development proxy.
 
-## Reviewer quick start
+## Quick start
 
-Prerequisites: Docker Desktop running Linux containers and Compose, Go **1.26+**, Node.js **22.12+**, npm. Free ports: **5432, 8080, 5173**. These PowerShell commands start at the repository root (`D:\project\Inventory_And_Sales` in the implementation environment). Ignored `.tools` files are not required.
+Prerequisites: Docker Desktop with Linux containers and Compose, Go **1.26+**, Node.js **22.12+**, and npm. Ports **5432, 8080, 5173** must be available. Run the PowerShell commands below from the repository root. No global frontend packages are needed.
 
 ```powershell
 # Initial setup only; never overwrite a configured .env.
@@ -29,9 +29,11 @@ npm ci
 npm run dev
 ```
 
-Open `http://localhost:5173`. The application commands are `backend/run.ps1` and `npm run dev` after dependency installation. On Linux/macOS export `DATABASE_URL` and `PORT`, then run `go run ./cmd/api` inside `backend/`. Vite proxies `/api` to Go; no development CORS setup is needed. Production needs static hosting of `frontend/dist` and an `/api` reverse proxy.
+Open `http://localhost:5173`.
 
-Designed for <=5-minute setup with prerequisites installed and working downloads. `VERIFICATION.md` records actual measured timings/cache conditions; cold image/package downloads on another machine cannot be guaranteed under five minutes.
+On Linux/macOS, export `DATABASE_URL` and `PORT`, then run `go run ./cmd/api` inside `backend/`. Frontend commands are the same. Production deployment requires static hosting of `frontend/dist` and an `/api` reverse proxy.
+
+With prerequisites installed, setup is intended to take under five minutes. Initial image and dependency downloads depend on the network. See `VERIFICATION.md` for measured setup times and test results.
 
 ### Environment
 
@@ -64,7 +66,7 @@ Compose healthchecks PostgreSQL, then runs one-shot `setup` using `backend/scrip
 docker compose run --rm setup
 ```
 
-## Required interface workflows
+## Features
 
 - Products: SKU/name, IDR price, stock, status, relative last movement and timestamp tooltip; create/edit/delete, debounce 350 ms, All/Active/Inactive/Low stock filters, pagination and server-global summary.
 - Criteria reset page 1. Abort/version guards reject stale responses, including search reversion. Deletion corrects empty pages. Loading/empty/error/retry states are reachable.
@@ -195,8 +197,20 @@ npm test -- src/stock.integration.test.ts
 # Stop the test backend, then set STOCKFLOW_TEST_OFFLINE=1 for its offline case.
 ```
 
-Optional frontend integration tests retain audit records and create products with final stock zero. Ordinary unit runs skip them. See `VERIFICATION.md` for requirement audit, actual results, cache conditions and browser checks.
-Vitest runs files serially because live tests compare a global summary baseline; do not run competing writers against that verification database. An interrupted/failed test may retain a nonzero fixture, so keep all live runs on the dedicated database.
+Live integration tests are opt-in and retain their audit records. Successful runs restore fixture products to zero stock; interrupted runs may leave nonzero fixtures. Run them only against a dedicated database with no competing writers. Vitest runs files serially to keep global summary assertions isolated.
+
+### Browser verification
+
+`scripts/verify-browser.mjs` checks the main workflows using Chrome's debugging protocol without additional packages. It creates test products and orders, so use a dedicated seeded database, not business data.
+
+With the verification backend and Vite running at port 5175, run from the repository root:
+
+```powershell
+$env:STOCKFLOW_BROWSER_VERIFY = '1'
+node scripts/verify-browser.mjs
+```
+
+Set `CHROME_PATH` if Chrome is installed elsewhere, or `STOCKFLOW_BROWSER_ORIGIN` for another frontend address. Debug port 9223 must be free. Screenshots and results are written to ignored `.tools/`. This local check does not replace cross-browser or accessibility testing.
 
 ## Assumptions, limitations, next improvements
 
@@ -206,11 +220,10 @@ Vitest runs files serially because live tests compare a global summary baseline;
 - No Idempotency-Key (bonus deliberately omitted). A lost response may mean a mutation committed. Submit guards prevent simultaneous requests, not safe blind retries; inspect history/order status first.
 - Server prices/stock may change after selection; backend is authoritative. No final-total prediction is used.
 - A local browser audit is not a maintained cross-browser E2E suite. Production setup/download performance is network-dependent.
-- Reproduce the local Chrome audit with `scripts/verify-browser.mjs`: run the dedicated seeded verification API/Vite at port 5175, set `STOCKFLOW_BROWSER_VERIFY=1`, then `node scripts/verify-browser.mjs` from root. Override `CHROME_PATH` or `STOCKFLOW_BROWSER_ORIGIN` as needed. It uses Chrome's debugging protocol without extra packages, writes screenshots/results under ignored `.tools`, and creates retained audit fixtures. It must not target business data. Debug port 9223 must be free.
 - Future work, not implemented: idempotency, CI/browser E2E, authenticated deployment, movement pagination, persistent order detail and exact large-summary transport. No bonus feature endpoints are included.
 
-### Honest effort and assignment restriction
+### Development time and assignment restriction
 
-No timesheet or trustworthy active-hours record was provided: **focused hours are unknown, not fabricated**. Commit timestamps are activity evidence, not hours worked. First foundation commit: November 25, 2026, 14:49:19 +07:00; stage 7 commit: 17:13:16 +07:00. The final audit wall-clock interval is recorded in `VERIFICATION.md`, not claimed as focused working hours.
+Active working hours were not tracked. Commit timestamps show activity, not time spent: the first foundation commit was November 25, 2026 at 14:49:19 +07:00, and stage 7 was committed at 17:13:16 +07:00. The final audit interval is recorded in `VERIFICATION.md`.
 
 The assignment prohibits AI code generation. This implementation used AI assistance at the user's request after disclosure. It must not be represented as compliant with that non-code rule without evaluator approval.

@@ -2,8 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    // Opt-in live tests assert global summary deltas against one dedicated DB.
-    // Running files concurrently would let unrelated fixtures change that baseline.
+    // Live tests share a database and compare global summary changes.
     fileParallelism: false,
   },
 })
